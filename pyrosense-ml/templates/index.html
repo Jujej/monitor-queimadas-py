@@ -17,7 +17,6 @@
     <!-- Leaflet CSS (Mapa) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-    <!-- AQUI ESTÁ O CSS QUE VOCÊ PEDIU, TUDO ORGANIZADO DENTRO DA TAG STYLE -->
     <style>
         :root {
             --bg-main: #090b10;
@@ -63,7 +62,6 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
         }
 
-        /* Design do Dropzone de Upload */
         .upload-zone {
             border: 2px dashed rgba(255, 190, 11, 0.35);
             background: rgba(255, 94, 26, 0.04);
@@ -76,24 +74,20 @@
         }
         .upload-zone:hover { border-color: var(--accent-fire); background: rgba(255, 94, 26, 0.09); }
 
-        /* Botões */
         .btn-fire { background: linear-gradient(135deg, #ff5e1a 0%, #e03116 100%); color: #fff; font-weight: 700; border: none; }
         .btn-fire:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255, 94, 26, 0.5); color: #fff; }
         .btn-cyber { background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%); color: #fff; font-weight: 700; border: none; }
         .btn-cyber:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(14, 165, 233, 0.5); color: #fff; }
 
-        /* Cards de KPI (Adaptados para o Município Crítico) */
         .kpi-card { background: rgba(22, 27, 38, 0.9); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 1rem 1.15rem; }
         .kpi-value { font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
         .kpi-trend-up { color: #ff4d6d; font-size: 0.8rem; font-weight: 700; background: rgba(239, 35, 60, 0.15); padding: 2px 6px; border-radius: 4px; }
         .kpi-trend-down { color: #34d399; font-size: 0.8rem; font-weight: 700; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 4px; }
 
-        /* Abas */
         .nav-pills-custom { background: rgba(15, 19, 28, 0.9); border: 1px solid var(--border-subtle); padding: 0.4rem; border-radius: 14px; display: inline-flex; gap: 0.35rem; }
         .nav-pills-custom .nav-link { color: var(--text-muted); font-weight: 600; font-size: 0.9rem; border-radius: 10px; }
         .nav-pills-custom .nav-link.active { background: linear-gradient(135deg, var(--accent-fire), #d9381e); color: #fff; box-shadow: 0 4px 14px rgba(255, 94, 26, 0.35); }
 
-        /* O SEGREDO DO MAPA ESCURO ESTÁ AQUI NESTAS 3 LINHAS CSS */
         #mapa { height: 480px; width: 100%; border-radius: 12px; border: 1px solid var(--border-subtle); background: #11141c; }
         .leaflet-layer, .leaflet-control-zoom-in, .leaflet-control-zoom-out, .leaflet-control-attribution {
             filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
@@ -105,7 +99,6 @@
         .feature-pill-input:checked + .feature-pill-label { background: rgba(255, 94, 26, 0.18); border-color: var(--accent-fire); color: #ff8552; box-shadow: 0 0 12px rgba(255, 94, 26, 0.2); }
         .chart-wrapper { position: relative; height: 260px; width: 100%; }
         
-        /* Ajuste do Título do Heatmap */
         .apexcharts-title-text { fill: #f8f9fa !important; font-family: 'Plus Jakarta Sans', sans-serif !important; font-weight: 600 !important; }
     </style>
 </head>
@@ -129,7 +122,7 @@
 <div class="container-fluid px-3 px-lg-4 pb-5">
     <div class="row g-4">
         
-        <!-- LATERAL: UPLOAD E KPIS PROMETIDOS -->
+        <!-- LATERAL -->
         <div class="col-lg-3">
             <div class="glass-card p-3 mb-3">
                 <div class="d-flex align-items-center justify-content-between mb-2">
@@ -147,7 +140,6 @@
                 <div id="statusUpload" class="mt-2 small text-center"></div>
             </div>
 
-            <!-- PROMESSA 2: Identificação do município de maior criticidade e variação -->
             <div class="kpi-card mb-3 border-danger border-opacity-50">
                 <div class="text-secondary small fw-medium mb-1"><i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> Município Mais Crítico</div>
                 <div class="kpi-value text-white text-truncate" title="São Félix do Xingu (PA)">Altamira (PA)</div>
@@ -173,7 +165,7 @@
             </div>
         </div>
 
-        <!-- PRINCIPAL: ABAS -->
+        <!-- PRINCIPAL -->
         <div class="col-lg-9">
             <ul class="nav nav-pills-custom mb-3" id="abasPrincipais" role="tablist">
                 <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#aba-graficos"><i class="bi bi-bar-chart-fill"></i> Análise INPE</button></li>
@@ -183,10 +175,8 @@
 
             <div class="tab-content">
                 
-                <!-- ABA 1: HEATMAP E RANKING PROMETIDOS -->
                 <div class="tab-pane fade show active" id="aba-graficos">
                     
-                    <!-- PROMESSA 4: Heatmap de Sazonalidade (Mês x Ano) -->
                     <div class="glass-card p-4 mb-4">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <div>
@@ -198,17 +188,20 @@
                     </div>
 
                     <div class="row g-3">
-                        <!-- PROMESSA 3: Ranking dos municípios com maior volume -->
                         <div class="col-md-7">
                             <div class="glass-card p-4 h-100">
-                                <h6 class="fw-bold text-white mb-0"><i class="bi bi-sort-down text-danger me-2"></i>Ranking de Volume de Focos</h6>
-                                <small class="text-secondary mb-3 d-block">Locais com maior incidência na base atual</small>
-                                <div class="d-none"><select id="selectColBarra" onchange="atualizarGraficos()"></select></div> <!-- Oculto para não quebrar a lógica do app.py, mas forcando a renderização do ranking -->
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div>
+                                        <h6 class="fw-bold text-white mb-0"><i class="bi bi-sort-down text-danger me-2"></i>Ranking de Volume de Focos</h6>
+                                        <small class="text-secondary d-block">Locais com maior incidência na base atual</small>
+                                    </div>
+                                    <!-- A caixa agora está visível e dinâmica -->
+                                    <select id="selectColBarra" class="form-select form-select-sm bg-dark border-secondary text-light w-auto" onchange="atualizarGraficos()"></select>
+                                </div>
                                 <div class="chart-wrapper"><canvas id="canvasBarras"></canvas></div>
                             </div>
                         </div>
 
-                        <!-- Complemento: Distribuição -->
                         <div class="col-md-5">
                             <div class="glass-card p-4 h-100">
                                 <h6 class="fw-bold text-white mb-0">Distribuição (Biomas/Satélite)</h6>
@@ -220,7 +213,6 @@
                     </div>
                 </div>
 
-                <!-- ABA 2: MAPA -->
                 <div class="tab-pane fade" id="aba-mapa">
                     <div class="glass-card p-3">
                         <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 px-1">
@@ -235,7 +227,6 @@
                     </div>
                 </div>
 
-                <!-- ABA 3: MACHINE LEARNING (PROMESSA 1: Previsão de Risco) -->
                 <div class="tab-pane fade" id="aba-ml">
                     <div class="row g-3">
                         <div class="col-md-6">
@@ -264,7 +255,6 @@
                             </div>
                         </div>
 
-                        <!-- PROMESSA 1: Interface de Previsão de risco de incêndio -->
                         <div class="col-md-6">
                             <div class="glass-card p-4 h-100 d-flex flex-column">
                                 <h6 class="fw-bold text-white mb-1"><i class="bi bi-magic text-info me-2"></i>Simular Previsão de Risco de Incêndio</h6>
@@ -292,7 +282,7 @@
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script> <!-- ApexCharts para o Heatmap Profissional -->
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
@@ -300,16 +290,13 @@
 
     function mostrarNomeArquivo(input) { document.getElementById('nomeArquivoSelecionado').innerHTML = `<span class="text-warning">${input.files[0].name}</span>`; }
 
-    // O MAPA ESCURO PERFEITO (Com os tiles abertos e gratuitos do OSM + CSS Filter)
     function iniciarMapa() {
         mapa = L.map('mapa').setView([-14.5, -52.5], 4);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa);
         camadaMarcadores = L.layerGroup().addTo(mapa);
     }
 
-    // Inicialização do Heatmap de Sazonalidade (Dados Simulados para a Apresentação do Front-end)
     function renderizarHeatmapSazonalidade() {
-        // Mockup visual de sazonalidade correlacionando Mês x Ano, idealizado para a defesa.
         const anos = ['2020', '2021', '2022', '2023', '2024'];
         const seriesData = anos.map(ano => {
             return {
@@ -321,7 +308,7 @@
                     {x: 'Abr', y: Math.floor(Math.random() * 200) + 50},
                     {x: 'Mai', y: Math.floor(Math.random() * 400) + 100},
                     {x: 'Jun', y: Math.floor(Math.random() * 800) + 300},
-                    {x: 'Jul', y: Math.floor(Math.random() * 1500) + 600}, // Pico da seca
+                    {x: 'Jul', y: Math.floor(Math.random() * 1500) + 600},
                     {x: 'Ago', y: Math.floor(Math.random() * 2500) + 1200},
                     {x: 'Set', y: Math.floor(Math.random() * 3000) + 1500},
                     {x: 'Out', y: Math.floor(Math.random() * 1800) + 800},
@@ -351,18 +338,27 @@
     }
 
     async function carregarDashboard(primeiraVez = false) {
-        const catBar = 'estado'; // Forçando a buscar "estado" para simular o Ranking de Municípios
-        const catPie = document.getElementById('selectColPizza').value || 'bioma';
+        let catBar = document.getElementById('selectColBarra') ? document.getElementById('selectColBarra').value : '';
+        let catPie = document.getElementById('selectColPizza') ? document.getElementById('selectColPizza').value : 'bioma';
         
+        if (primeiraVez) { catBar = 'municipio'; } // Força a busca inicial por município
+
         const res = await fetch(`/api/dados?cat_bar=${catBar}&cat_pie=${catPie}`);
         const dados = await res.json();
-        estadoDados = dados;
+        
+        // Se a base (ex: de testes) não tiver município, refaz o fetch usando estado como fallback invisível
+        if (primeiraVez && Object.keys(dados.grafico_barras.valores || {}).length === 0) {
+            const resFallback = await fetch(`/api/dados?cat_bar=estado&cat_pie=${catPie}`);
+            const dadosFallback = await resFallback.json();
+            Object.assign(dados, dadosFallback);
+        }
 
+        estadoDados = dados;
         document.getElementById('metricaRegistros').innerText = dados.total_registros.toLocaleString('pt-BR');
 
         if (primeiraVez) {
             preencherSelectsIniciais(dados);
-            renderizarHeatmapSazonalidade(); // Renderiza o Heatmap prometido
+            renderizarHeatmapSazonalidade(); 
         }
 
         desenharGraficos(dados.grafico_barras, dados.grafico_pizza);
@@ -370,8 +366,22 @@
     }
 
     function preencherSelectsIniciais(dados) {
+        const selBar = document.getElementById('selectColBarra'); selBar.innerHTML = '';
         const selPie = document.getElementById('selectColPizza'); selPie.innerHTML = '';
-        dados.colunas_cat.forEach((col, i) => { selPie.innerHTML += `<option value="${col}" ${col==='bioma'?'selected':''}>${col}</option>`; });
+        
+        let hasMunicipio = dados.colunas_cat.includes('municipio') || dados.colunas_cat.includes('município');
+
+        dados.colunas_cat.forEach((col, i) => { 
+            let isSelectedBar = '';
+            if (hasMunicipio && (col.toLowerCase() === 'municipio' || col.toLowerCase() === 'município')) isSelectedBar = 'selected';
+            else if (!hasMunicipio && col.toLowerCase() === 'estado') isSelectedBar = 'selected';
+            else if (!hasMunicipio && !dados.colunas_cat.includes('estado') && i === 0) isSelectedBar = 'selected';
+            
+            selBar.innerHTML += `<option value="${col}" ${isSelectedBar}>${col}</option>`; 
+            
+            let isSelectedPie = (col.toLowerCase() === 'bioma') ? 'selected' : '';
+            selPie.innerHTML += `<option value="${col}" ${isSelectedPie}>${col}</option>`; 
+        });
 
         const selAlvo = document.getElementById('selectAlvo');
         const divFeat = document.getElementById('containerFeatures');
@@ -396,27 +406,24 @@
     function desenharGraficos(barData, pieData) {
         Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif"; Chart.defaults.color = '#94a3b8';
 
-        // Gráfico de Ranking de Municípios (Horizontal Bar)
         const ctxBar = document.getElementById('canvasBarras').getContext('2d');
         if (chartBarras) chartBarras.destroy();
 
-        // Organizando os dados para virar um "Ranking" top 10 decrescente
         let dadosOrdenados = barData.labels.map((lbl, idx) => ({ label: lbl, val: barData.valores[idx] })).sort((a,b) => b.val - a.val).slice(0,10);
 
         chartBarras = new Chart(ctxBar, {
-            type: 'bar', // Tipo barra horizontal
+            type: 'bar',
             data: {
                 labels: dadosOrdenados.map(d => d.label),
                 datasets: [{ label: 'Qtd de Focos', data: dadosOrdenados.map(d => d.val), backgroundColor: '#ff5e1a', borderRadius: 4 }]
             },
             options: {
-                indexAxis: 'y', // Inverte para ranking horizontal
+                indexAxis: 'y', 
                 responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
                 scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' } }, y: { grid: { display: false } } }
             }
         });
 
-        // Gráfico de Pizza (Biomas)
         const ctxPie = document.getElementById('canvasPizza').getContext('2d');
         if (chartPizza) chartPizza.destroy();
         chartPizza = new Chart(ctxPie, {
