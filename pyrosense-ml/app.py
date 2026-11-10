@@ -18,68 +18,15 @@ Todos
 """
 
 
-# Tenta carregar o scikit-learn; se o Windows bloquear a DLL (_libsvm), ativa o modo compatível em NumPy
+# Módulo de treino (treino.py). Se o scikit-learn não carregar (ex.: DLL bloqueada pelo
+# Windows), o app continua subindo e só as rotas de ML respondem 503.
 try:
-    from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import LabelEncoder
-    from sklearn.tree import DecisionTreeClassifier
-    from sklearn.neighbors import KNeighborsClassifier
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.metrics import accuracy_score
-    SKLEARN_DISPONIVEL = True
-    print("✅ Scikit-learn carregado com sucesso!")
-except ImportError as e:
-    SKLEARN_DISPONIVEL = False
-    print(f"⚠️ Aviso: Bloqueio de DLL do Windows detectado ({e}). Usando motor ML nativo em NumPy/Pandas.")
-
-    class LabelEncoder:
-        def fit_transform(self, y):
-            self.classes_, y_idx = np.unique(y, return_inverse=True)
-            return y_idx
-        def transform(self, y):
-            return np.array([np.where(self.classes_ == val)[0][0] if val in self.classes_ else 0 for val in y])
-        def inverse_transform(self, idx):
-            return self.classes_[idx]
-
-    def train_test_split(X, y, test_size=0.25, random_state=42):
-        np.random.seed(random_state)
-        indices = np.random.permutation(len(X))
-        corte = int(len(X) * (1 - test_size))
-        idx_treino, idx_teste = indices[:corte], indices[corte:]
-        return X.iloc[idx_treino], X.iloc[idx_teste], y[idx_treino], y[idx_teste]
-
-    def accuracy_score(y_true, y_pred):
-        return float(np.mean(y_true == y_pred))
-
-    class ModeloNativoML:
-        """Implementação leve para quando o Smart App Control do Windows bloqueia DLLs do sklearn."""
-        def __init__(self, tipo='decision_tree', param=5):
-            self.tipo = tipo
-            self.param = max(1, int(param))
-
-        def fit(self, X, y):
-            self.X_train = np.asarray(X, dtype=float)
-            self.y_train = np.asarray(y, dtype=int)
-            self.classes_ = np.unique(self.y_train)
-            self.std = np.std(self.X_train, axis=0) + 1e-8
-            return self
-
-        def predict_proba(self, X):
-            X_arr = np.asarray(X, dtype=float)
-            probs = []
-            # Ajusta vizinhos efetivos conforme algoritmo e parâmetro escolhido no slider
-            k = min(len(self.X_train), self.param if self.tipo == 'knn' else max(3, 15 - self.param))
-            for x in X_arr:
-                dists = np.linalg.norm((self.X_train - x) / self.std, axis=1)
-                idx = np.argsort(dists)[:k]
-                vizinhos = self.y_train[idx]
-                p = [np.mean(vizinhos == c) for c in self.classes_]
-                probs.append(p)
-            return np.array(probs)
-
-        def predict(self, X):
-            probs = self.predict_proba(X)
-            return self.classes_[np.argmax(probs, axis=1)]
+    import treino
+    TREINO_DISPONIVEL, ERRO_TREINO = True, None
+except Exception as e:  # ImportError, "DLL load failed" etc.
+    treino = None
+    TREINO_DISPONIVEL, ERRO_TREINO = False, str(e)
+    print(f"⚠️ Módulo de treino indisponível ({e}). As rotas de ML responderão 503.")
 
 app = Flask(__name__)
 
@@ -95,13 +42,8 @@ PROCESSED_CSV = etl.PROCESSED_DIR / "queimadas_tocantins.csv"  # saída do etl.p
 
 etl.criar_diretorios()  # garante data/raw, data/uploads e data/processed
 
-# Variáveis globais em memória para manter o estado da sessão
+# Estado em memória: só a base. O modelo treinado fica salvo em disco pelo treino.py.
 df_atual = None
-modelo_atual = None
-encoders_atuais = {}
-encoder_alvo = None
-features_atuais = []
-alvo_atual = None
 
 
 def gerar_dados_iniciais(n=400):
@@ -193,14 +135,6 @@ def classe_risco(serie):
     return pd.cut(serie, bins=[-np.inf, 0.4, 0.7, np.inf],
                   labels=['Baixo', 'Médio', 'Alto'], right=False).astype(str)
 
-def preparar_alvo(serie):
-    """Alvo numérico contínuo vira classes (risco_fogo: limiares fixos; demais: tercis)."""
-    if is_numeric_dtype(serie) and serie.nunique() > 10:
-        if serie.name == 'risco_fogo':
-            return classe_risco(serie)
-        return pd.qcut(serie.rank(method='first'), 3, labels=['Baixo', 'Médio', 'Alto']).astype(str)
-    return serie.astype(str)
-
 df_atual = carregar_dados_iniciais()
 
 @app.route('/')
@@ -261,9 +195,148 @@ def obter_dados():
         'medias_numericas': medias_numericas
     })
 
+# --------------------------------------------------------------------------- #
+# Indicadores e sazonalidade (calculados a partir da base carregada)
+# --------------------------------------------------------------------------- #
+MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+_cache_datas = {'df': None, 'datas': None}
+
+
+def _datas_da_base():
+    """
+    `datahora` da base atual como datetime. É calculado uma vez por base: o cache é
+    invalidado sozinho quando o upload troca o `df_atual` por outro DataFrame.
+    Levanta ValueError se a base não tem datas (ex.: dados de demonstração).
+    """
+    if df_atual is None or df_atual.empty or 'datahora' not in df_atual.columns:
+        raise ValueError("A base atual não tem a coluna 'datahora' (provavelmente são os dados de "
+                         "demonstração). Carregue a base real do INPE.")
+    if _cache_datas['df'] is not df_atual:
+        _cache_datas['datas'] = pd.to_datetime(df_atual['datahora'], errors='coerce')
+        _cache_datas['df'] = df_atual
+    datas = _cache_datas['datas']
+    if datas.notna().sum() == 0:
+        raise ValueError("Nenhuma data válida em 'datahora'.")
+    return datas
+
+
+def _variacao_pct(atual, anterior):
+    """Variação % entre dois valores; None quando não há base de comparação (vazio ou zero)."""
+    if atual is None or anterior is None or pd.isna(atual) or pd.isna(anterior) or anterior == 0:
+        return None
+    return round(float((atual - anterior) / anterior * 100), 1)
+
+
+def _numero(valor, casas=2):
+    """float arredondado, ou None se for NaN (jsonify não aceita NaN como JSON válido)."""
+    return None if valor is None or pd.isna(valor) else round(float(valor), casas)
+
+
+@app.route('/api/kpis', methods=['GET'])
+def obter_kpis():
+    """
+    Indicadores do mês mais recente da base (substituem os KPIs fixos do HTML).
+
+    - Município mais crítico: o que teve mais focos no mês de referência.
+    - Todas as variações comparam com o MESMO recorte de dias do mês anterior. Assim,
+      se a base termina no meio do mês, não se compara um mês parcial com um mês cheio.
+    - `variacao_pct` vem como null quando o mês anterior teve 0 focos (sem base de comparação).
+    """
+    try:
+        datas = _datas_da_base()
+    except ValueError as e:
+        return jsonify({'erro': str(e)}), 400
+    if 'municipio' not in df_atual.columns:
+        return jsonify({'erro': "A base atual não tem a coluna 'municipio'."}), 400
+
+    ultimo = datas.max()
+    ref = ultimo.to_period('M')
+    ant = ref - 1
+    periodos = datas.dt.to_period('M')
+    mask_ref = periodos == ref
+    mask_ant = (periodos == ant) & (datas.dt.day <= ultimo.day)
+
+    focos_ref = df_atual.loc[mask_ref, 'municipio'].value_counts()
+    focos_ant = df_atual.loc[mask_ant, 'municipio'].value_counts()
+    ranking = [
+        {'municipio': str(mun), 'focos': int(n), 'focos_mes_anterior': int(focos_ant.get(mun, 0)),
+         'variacao_pct': _variacao_pct(int(n), int(focos_ant.get(mun, 0)))}
+        for mun, n in focos_ref.head(5).items()
+    ]
+
+    risco_ref = risco_ant = None
+    if 'risco_fogo' in df_atual.columns:
+        risco = pd.to_numeric(df_atual['risco_fogo'], errors='coerce')
+        risco_ref, risco_ant = risco[mask_ref].mean(), risco[mask_ant].mean()
+
+    total_ref, total_ant = int(mask_ref.sum()), int(mask_ant.sum())
+    return jsonify({
+        'periodo_referencia': {
+            'ano': int(ref.year), 'mes': int(ref.month), 'rotulo': f'{MESES_ABREV[ref.month - 1]}/{ref.year}',
+            'ultimo_dia_com_dados': int(ultimo.day), 'parcial': bool(ultimo.day < ref.days_in_month),
+        },
+        'periodo_comparacao': {'ano': int(ant.year), 'mes': int(ant.month), 'dias_comparados': int(ultimo.day)},
+        'total_focos': {'atual': total_ref, 'anterior': total_ant, 'variacao_pct': _variacao_pct(total_ref, total_ant)},
+        'risco_medio': {'atual': _numero(risco_ref, 3), 'anterior': _numero(risco_ant, 3),
+                        'variacao_pct': _variacao_pct(risco_ref, risco_ant)},
+        'municipio_mais_critico': ranking[0] if ranking else None,
+        'top_municipios': ranking,
+    })
+
+
+@app.route('/api/sazonalidade', methods=['GET'])
+def obter_sazonalidade():
+    """
+    Focos por mês e ano, no formato que o heatmap do ApexCharts consome.
+
+    - `series`: uma por ano (ordem crescente); cada ponto é {x: 'Jan', y: focos}.
+    - `y` é null nos meses FORA do período coberto pela base (antes do primeiro e depois do
+      último registro): célula vazia no gráfico, em vez de um falso "0 focos".
+    - `faixas`: cortes da escala de cores calculados dos próprios dados (tercis), já no formato
+      de `colorScale.ranges` (from/to), para o front não depender de limites fixos.
+    """
+    try:
+        datas = _datas_da_base()
+    except ValueError as e:
+        return jsonify({'erro': str(e)}), 400
+
+    periodos = datas.dropna().dt.to_period('M')
+    contagem = periodos.value_counts()
+    primeiro, ultimo = periodos.min(), periodos.max()
+
+    series = []
+    for ano in range(primeiro.year, ultimo.year + 1):
+        pontos = []
+        for mes in range(1, 13):
+            p = pd.Period(year=ano, month=mes, freq='M')
+            pontos.append({'x': MESES_ABREV[mes - 1],
+                           'y': int(contagem.get(p, 0)) if primeiro <= p <= ultimo else None})
+        series.append({'name': str(ano), 'data': pontos})
+
+    valores = [pt['y'] for s in series for pt in s['data'] if pt['y']]
+    maximo = max(valores) if valores else 0
+    corte1, corte2 = (int(round(q)) for q in np.quantile(valores, [1 / 3, 2 / 3])) if valores else (0, 0)
+    ultima_data = datas.max()
+
+    return jsonify({
+        'meses': MESES_ABREV,
+        'anos': [s['name'] for s in series],
+        'series': series,
+        'faixas': [
+            {'from': 0, 'to': corte1, 'name': 'Baixo'},
+            {'from': corte1 + 1, 'to': corte2, 'name': 'Moderado'},
+            {'from': corte2 + 1, 'to': max(maximo, corte2 + 1), 'name': 'Crítico'},
+        ],
+        'periodo': {'inicio': str(primeiro), 'fim': str(ultimo)},
+        'mes_parcial': (None if ultima_data.day >= ultimo.days_in_month
+                        else {'ano': int(ultimo.year), 'mes': int(ultimo.month)}),
+        'total_focos': int(contagem.sum()),
+    })
+
+
 @app.route('/api/upload', methods=['POST'])
 def upload_arquivo():
-    global df_atual, modelo_atual
+    global df_atual
     if 'arquivo' not in request.files:
         return jsonify({'erro': 'Nenhum arquivo enviado'}), 400
 
@@ -298,9 +371,10 @@ def upload_arquivo():
         etl.executar_etl(caminho_base=RAW_CSV if RAW_CSV.exists() else None, caminhos_upload=uploads)
 
         df_atual = carregar_processado()
-        modelo_atual = None  # dados novos invalidam o modelo anterior
+        # dados novos: o modelo salvo ficou desatualizado; o front deve re-treinar
         log.info("Base atualizada: %s linhas (%.1fs no total)", f"{len(df_atual):,}", time.perf_counter() - inicio)
-        return jsonify({'mensagem': f'Arquivo {arq.filename} carregado com sucesso! ({len(df_atual)} linhas na base)'})
+        return jsonify({'mensagem': f'Arquivo {arq.filename} carregado com sucesso! ({len(df_atual)} linhas na base)',
+                        'retreinar': True})
 
     except etl.ETLError as e:
         log.error("Upload rejeitado: %s", e)
@@ -312,103 +386,76 @@ def upload_arquivo():
             destino.unlink(missing_ok=True)
         return jsonify({'erro': f'Falha ao processar arquivo: {str(e)}'}), 500
 
+def _ml_indisponivel():
+    return jsonify({'erro': f'Módulo de treino indisponível: {ERRO_TREINO}'}), 503
+
 @app.route('/api/treinar', methods=['POST'])
 def treinar_modelo():
-    global df_atual, modelo_atual, encoders_atuais, encoder_alvo, features_atuais, alvo_atual
+    """
+    Body JSON (todos opcionais):
+        modelo            'decision_tree' | 'random_forest' | 'knn'   (padrão: random_forest)
+        parametro         profundidade máxima (árvores) ou k (kNN), 1-50   (padrão: 8)
+        features          lista de colunas; se vazia usa o conjunto padrão
+        conjunto          'completo' | 'sem_clima'  (usado quando `features` está vazia)
+        ano_teste         ano a partir do qual os dados vão para o teste
+        validacao_cruzada true/false (padrão false: deixa o treino interativo mais rápido)
+    """
+    if not TREINO_DISPONIVEL:
+        return _ml_indisponivel()
 
     dados = request.json or {}
-    alvo_atual = dados.get('alvo')
-    features_atuais = [f for f in dados.get('features', []) if f != alvo_atual]
-    tipo_modelo = dados.get('modelo')
+    if dados.get('alvo') not in (None, '', 'risco_fogo', 'riscofogo'):
+        return jsonify({'erro': "O modelo prevê o risco de fogo; o alvo deve ser 'risco_fogo'."}), 400
+    if df_atual is None or df_atual.empty:
+        return jsonify({'erro': 'Base vazia'}), 400
+
     try:
-        # Parâmetro vindo do campo do front (profundidade máxima); limitado a um intervalo seguro
-        param_valor = max(1, min(int(dados.get('parametro', 5)), 50))
+        parametro = max(1, min(int(dados.get('parametro', 8)), 50))
+        ano_teste = int(dados['ano_teste']) if dados.get('ano_teste') else None
     except (TypeError, ValueError):
-        return jsonify({'erro': 'O parâmetro do modelo deve ser um número inteiro.'}), 400
+        return jsonify({'erro': 'parametro e ano_teste devem ser números inteiros.'}), 400
 
-    if not alvo_atual or not features_atuais:
-        return jsonify({'erro': 'Selecione a variável alvo e pelo menos uma variável preditora.'}), 400
-    if alvo_atual not in df_atual.columns or any(f not in df_atual.columns for f in features_atuais):
-        return jsonify({'erro': 'Alvo ou variáveis preditoras inválidas para a base atual.'}), 400
-
-    df_ml = df_atual[features_atuais + [alvo_atual]].dropna().copy()
-    encoders_atuais = {}
-
-    for col in features_atuais:
-        if not is_numeric_dtype(df_ml[col]):
-            le = LabelEncoder()
-            df_ml[col] = le.fit_transform(df_ml[col].astype(str))
-            encoders_atuais[col] = le
-
-    encoder_alvo = LabelEncoder()
-    y = encoder_alvo.fit_transform(preparar_alvo(df_ml[alvo_atual]).astype(str))
-    X = df_ml[features_atuais]
-
-    if len(encoder_alvo.classes_) < 2:
-        return jsonify({'erro': 'O alvo tem apenas uma classe; escolha outra variável.'}), 400
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-
-    if SKLEARN_DISPONIVEL:
-        if tipo_modelo == 'decision_tree':
-            modelo_atual = DecisionTreeClassifier(max_depth=param_valor, random_state=42)
-        elif tipo_modelo == 'knn':
-            k = min(param_valor, len(X_train))
-            modelo_atual = KNeighborsClassifier(n_neighbors=max(1, k))
-        else:
-            modelo_atual = RandomForestClassifier(n_estimators=min(param_valor * 10, 200), max_depth=param_valor, random_state=42)
-    else:
-        modelo_atual = ModeloNativoML(tipo=tipo_modelo, param=param_valor)
-
-    modelo_atual.fit(X_train, y_train)
-    y_pred = modelo_atual.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-
-    return jsonify({
-        'acuracia': round(acc * 100, 2),
-        'amostras_treino': len(X_train),
-        'amostras_teste': len(X_test),
-        'classes': encoder_alvo.classes_.tolist()
-    })
+    try:
+        resultado = treino.treinar(
+            df_atual,
+            modelo=dados.get('modelo') or 'random_forest',
+            parametro=parametro,
+            features=dados.get('features') or None,
+            conjunto=dados.get('conjunto') or 'completo',
+            ano_teste=ano_teste,
+            validacao_cruzada=bool(dados.get('validacao_cruzada', False)),
+        )
+        return jsonify(resultado)
+    except treino.TreinoError as e:
+        log.warning("Treino rejeitado: %s", e)
+        return jsonify({'erro': str(e)}), 400
+    except Exception as e:
+        log.exception("Falha inesperada no treino")
+        return jsonify({'erro': f'Falha no treino: {e}'}), 500
 
 @app.route('/api/prever', methods=['POST'])
 def prever():
-    global modelo_atual, encoders_atuais, encoder_alvo, features_atuais
+    """Body: {"entradas": {"mes": 8, "diasemchuva": 30, "bioma": "CERRADO", ...}}"""
+    if not TREINO_DISPONIVEL:
+        return _ml_indisponivel()
 
-    if modelo_atual is None:
-        return jsonify({'erro': 'Treine o modelo primeiro antes de realizar uma predição!'}), 400
-
-    entradas = request.json.get('entradas', {})
-    linha = {}
-
+    entradas = (request.json or {}).get('entradas', {})
     try:
-        for col in features_atuais:
-            val = entradas.get(col)
-            if col in encoders_atuais:
-                le = encoders_atuais[col]
-                if val in le.classes_:
-                    linha[col] = le.transform([val])[0]
-                else:
-                    linha[col] = 0
-            else:
-                linha[col] = float(val)
-
-        df_in = pd.DataFrame([linha])
-        pred_cod = modelo_atual.predict(df_in)[0]
-        classe_final = encoder_alvo.inverse_transform([pred_cod])[0]
-
-        probabilidades = {}
-        if hasattr(modelo_atual, 'predict_proba'):
-            probs = modelo_atual.predict_proba(df_in)[0]
-            for cls, p in zip(encoder_alvo.classes_, probs):
-                probabilidades[cls] = round(float(p) * 100, 1)
-
-        return jsonify({
-            'predicao': classe_final,
-            'probabilidades': probabilidades
-        })
+        return jsonify(treino.prever(entradas))
+    except treino.TreinoError as e:
+        return jsonify({'erro': str(e)}), 400
     except Exception as e:
-        return jsonify({'erro': f'Erro na predição: {str(e)}'}), 400
+        log.exception("Falha inesperada na predição")
+        return jsonify({'erro': f'Erro na predição: {e}'}), 500
+
+@app.route('/api/modelo', methods=['GET'])
+def info_modelo():
+    """Resultado do último treino salvo (métricas, features, split). Evita re-treinar a cada carga da página."""
+    if not TREINO_DISPONIVEL:
+        return _ml_indisponivel()
+    if not treino.METRICAS_PATH.exists():
+        return jsonify({'erro': 'Nenhum modelo treinado ainda.'}), 404
+    return app.response_class(treino.METRICAS_PATH.read_text(encoding='utf-8'), mimetype='application/json')
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

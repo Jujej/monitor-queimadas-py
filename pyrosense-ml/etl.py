@@ -83,6 +83,11 @@ COLUNAS_CATEGORICAS = ["municipio", "bioma", "satelite"]
 COLUNAS_NUMERICAS_SENTINELA = ["diasemchuva", "precipitacao", "riscofogo", "frp"]
 VALOR_SENTINELA = -999
 
+# Colunas que NÃO devem ser preenchidas com a mediana: é o alvo do modelo.
+# Imputar o alvo fabricaria rótulos (todas as linhas sem dado virariam "a classe
+# da mediana"). Elas ficam como NaN e o treino descarta essas linhas.
+COLUNAS_SEM_IMPUTACAO = ["riscofogo"]
+
 # Nomes alternativos usados pelo INPE em versões diferentes dos arquivos -> nome canônico.
 # Ex.: o CSV "focos_br_todos-sats" traz `data_pas`, `numero_dias_sem_chuva` e `risco_fogo`.
 ALIASES_COLUNAS = {
@@ -323,7 +328,8 @@ def limpar_dados(df: pd.DataFrame) -> pd.DataFrame:
     - Troca -999 (sentinela do INPE) por NaN.
     - Padroniza textos categóricos.
     - Descarta linhas sem informação essencial (data, município, coordenadas).
-    - Preenche nulos restantes: numéricos com a mediana, categóricos com 'DESCONHECIDO'.
+    - Preenche nulos restantes: numéricos com a mediana (exceto o alvo `riscofogo`,
+      que fica NaN), categóricos com 'DESCONHECIDO'.
     - Remove duplicatas.
     """
     df = df.copy()
@@ -360,6 +366,11 @@ def limpar_dados(df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].fillna("DESCONHECIDO")
     for col in COLUNAS_NUMERICAS_SENTINELA:
+        if col in COLUNAS_SEM_IMPUTACAO:
+            if col in df.columns:
+                log.info("Coluna '%s' mantida sem imputação: %s nulos (%.1f%%).",
+                         col, f"{int(df[col].isna().sum()):,}", df[col].isna().mean() * 100)
+            continue
         if col in df.columns and df[col].notna().any():
             df[col] = df[col].fillna(df[col].median())
 
