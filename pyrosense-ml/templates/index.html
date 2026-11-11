@@ -84,6 +84,8 @@
         .kpi-trend-up { color: #ff4d6d; font-size: 0.8rem; font-weight: 700; background: rgba(239, 35, 60, 0.15); padding: 2px 6px; border-radius: 4px; }
         .kpi-trend-down { color: #34d399; font-size: 0.8rem; font-weight: 700; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 4px; }
 
+        .kpi-trend-neutral { color: var(--text-muted); font-size: 0.8rem; font-weight: 700; background: rgba(139, 149, 165, 0.15); padding: 2px 6px; border-radius: 4px; }
+
         .nav-pills-custom { background: rgba(15, 19, 28, 0.9); border: 1px solid var(--border-subtle); padding: 0.4rem; border-radius: 14px; display: inline-flex; gap: 0.35rem; }
         .nav-pills-custom .nav-link { color: var(--text-muted); font-weight: 600; font-size: 0.9rem; border-radius: 10px; }
         .nav-pills-custom .nav-link.active { background: linear-gradient(135deg, var(--accent-fire), #d9381e); color: #fff; box-shadow: 0 4px 14px rgba(255, 94, 26, 0.35); }
@@ -120,6 +122,7 @@
 </nav>
 
 <div class="container-fluid px-3 px-lg-4 pb-5">
+    <div id="avisoGlobal" class="alert alert-danger d-none" role="alert"></div>
     <div class="row g-4">
         
         <!-- LATERAL -->
@@ -142,10 +145,10 @@
 
             <div class="kpi-card mb-3 border-danger border-opacity-50">
                 <div class="text-secondary small fw-medium mb-1"><i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> Município Mais Crítico</div>
-                <div class="kpi-value text-white text-truncate" title="São Félix do Xingu (PA)">Altamira (PA)</div>
-                <div class="mt-2 d-flex align-items-center gap-2">
-                    <span class="kpi-trend-up"><i class="bi bi-arrow-up-right-circle-fill me-1"></i> +14.2%</span>
-                    <span class="small text-secondary" style="font-size: 0.7rem;">vs mês anterior</span>
+                <div id="kpiMunicipio" class="kpi-value text-white text-truncate" title="">—</div>
+                <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                    <span id="kpiMunicipioTrend" class="kpi-trend-neutral">carregando...</span>
+                    <span id="kpiComparacao" class="small text-secondary" style="font-size: 0.7rem;"></span>
                 </div>
             </div>
 
@@ -158,8 +161,9 @@
                 </div>
                 <div class="col-6">
                     <div class="kpi-card text-center p-2">
-                        <div class="text-secondary small fw-medium mb-1">Queda de Risco</div>
-                        <div class="kpi-value text-success fs-5">-8.5%</div>
+                        <div class="text-secondary small fw-medium mb-1">Variação do Risco</div>
+                        <div id="kpiRisco" class="kpi-value text-secondary fs-5">—</div>
+                        <div id="kpiRiscoSub" class="text-secondary" style="font-size: 0.65rem;"></div>
                     </div>
                 </div>
             </div>
@@ -185,6 +189,7 @@
                             </div>
                         </div>
                         <div id="heatmapSazonalidade" style="min-height: 250px;"></div>
+                        <div id="notaSazonalidade" class="small text-secondary mt-2"></div>
                     </div>
 
                     <div class="row g-3">
@@ -241,20 +246,24 @@
                                 <div id="containerFeatures" class="d-flex flex-wrap gap-2 p-2 rounded bg-dark border border-secondary mb-3"></div>
 
                                 <label class="form-label small fw-semibold text-light">Classificador ML:</label>
-                                <select id="selectModelo" class="form-select bg-dark border-secondary text-light mb-3">
+                                <select id="selectModelo" class="form-select bg-dark border-secondary text-light mb-3" onchange="atualizarRotuloParametro()">
                                     <option value="decision_tree">Árvore de Decisão (Decision Tree)</option>
                                     <option value="random_forest">Floresta Aleatória (Random Forest)</option>
+                                    <option value="knn">K-Vizinhos Próximos (KNN)</option>
                                 </select>
 
-                                <label for="inputParametro" class="form-label small fw-semibold text-light">Parâmetro do Modelo (profundidade máxima):</label>
+                                <label id="rotuloParametro" for="inputParametro" class="form-label small fw-semibold text-light">Parâmetro do Modelo (profundidade máxima):</label>
                                 <input type="number" id="inputParametro" class="form-control bg-dark border-secondary text-light mb-1" value="8" min="1" max="50" step="1">
-                                <small class="text-secondary mb-4 d-block" style="font-size: 0.75rem;">Profundidade máxima da árvore (max_depth). Valores maiores ajustam mais aos dados; menores reduzem o overfitting.</small>
+                                <small id="ajudaParametro" class="text-secondary mb-4 d-block" style="font-size: 0.75rem;">Profundidade máxima da árvore (max_depth). Valores maiores ajustam mais aos dados; menores reduzem o overfitting.</small>
 
-                                <button class="btn btn-fire w-100 mt-auto py-2" onclick="treinarModelo()"><i class="bi bi-arrow-repeat me-1"></i> Re-treinar Modelo</button>
+                                <button id="btnTreinar" class="btn btn-fire w-100 mt-auto py-2" onclick="treinarModelo()"><i class="bi bi-arrow-repeat me-1"></i> Re-treinar Modelo</button>
                                 
+                                <div id="erroTreino" class="small text-danger mt-3"></div>
                                 <div id="resultadoTreino" class="mt-3 p-3 rounded bg-dark border border-success d-none">
                                     <span class="small text-secondary d-block mb-1">Acurácia do Modelo Preditivo:</span>
                                     <span id="txtAcuracia" class="fw-extrabold fs-4 text-success">--%</span>
+                                    <small id="txtBaseline" class="d-block text-secondary mt-1"></small>
+                                    <div id="avisosTreino" class="small text-warning mt-2"></div>
                                 </div>
                             </div>
                         </div>
@@ -268,10 +277,12 @@
 
                                 <button class="btn btn-cyber w-100 mt-auto py-2" onclick="realizarPredicao()"><i class="bi bi-cpu me-1"></i> Estimar Criticidade e Risco</button>
 
+                                <div id="erroPredicao" class="small text-danger mt-3"></div>
                                 <div id="resultadoPredicao" class="mt-3 p-3 rounded bg-dark border border-info d-none text-center">
                                     <span class="small text-secondary d-block mb-1">Criticidade Prevista pelo Modelo:</span>
                                     <span id="txtPredicaoFinal" class="badge bg-warning text-dark fs-5 px-4 py-2 fw-bold">---</span>
                                     <div id="containerProbabilidades" class="mt-3 text-start small"></div>
+                                    <div id="avisoPredicao" class="mt-2 small text-warning text-start"></div>
                                 </div>
                             </div>
                         </div>
@@ -290,9 +301,46 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-    let chartBarras = null; let chartPizza = null; let mapa = null; let camadaMarcadores = null; let estadoDados = {};
+    let chartBarras = null; let chartPizza = null; let chartHeatmap = null; let mapa = null; let camadaMarcadores = null; let estadoDados = {};
 
-    function mostrarNomeArquivo(input) { document.getElementById('nomeArquivoSelecionado').innerHTML = `<span class="text-warning">${input.files[0].name}</span>`; }
+    // Colunas que o back-end sempre descarta do treino (COLUNAS_PROIBIDAS em treino.py) + o próprio alvo.
+    const COLUNAS_FORA_DO_MODELO = ['risco_fogo', 'riscofogo', 'focos_mes', 'variacao_focos_pct', 'ano', 'dia', 'datahora'];
+    // Começam desmarcadas: 'estado' é constante após o ETL (só Tocantins); lat/lon e município são opcionais.
+    const FEATURES_DESMARCADAS = ['latitude', 'longitude', 'municipio', 'estado'];
+    const CORES_FAIXA = { 'Baixo': '#10b981', 'Moderado': '#ffbe0b', 'Crítico': '#ef233c' };
+
+    // ---------------------------------------------------------------- utilitários
+    function esc(txt) {
+        return String(txt ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Chama a API sem nunca lançar: erro de rede e resposta não-JSON (ex.: página HTML de 415/500) viram {ok:false}.
+    async function chamarApi(url, opcoes) {
+        try {
+            const res = await fetch(url, opcoes);
+            let dados = null;
+            try { dados = await res.json(); } catch (_) { dados = null; }
+            return { ok: res.ok, status: res.status, dados };
+        } catch (err) {
+            return { ok: false, status: 0, dados: { erro: 'Falha de conexão com o servidor.' } };
+        }
+    }
+    function mensagemErro(r, padrao) { return (r.dados && r.dados.erro) || `${padrao} (HTTP ${r.status})`; }
+
+    function setStatus(id, texto, classe) {
+        const el = document.getElementById(id); el.innerHTML = '';
+        const span = document.createElement('span'); span.className = classe; span.textContent = texto; el.appendChild(span);
+    }
+    function mostrarAvisoGlobal(texto) {
+        const el = document.getElementById('avisoGlobal');
+        el.textContent = texto; el.classList.toggle('d-none', !texto);
+    }
+
+    function mostrarNomeArquivo(input) {
+        const el = document.getElementById('nomeArquivoSelecionado'); el.innerHTML = '';
+        if (!input.files.length) { el.textContent = 'Selecionar Base CSV/XML'; return; }
+        const span = document.createElement('span'); span.className = 'text-warning'; span.textContent = input.files[0].name; el.appendChild(span);
+    }
 
     function iniciarMapa() {
         mapa = L.map('mapa').setView([-14.5, -52.5], 4);
@@ -300,106 +348,154 @@
         camadaMarcadores = L.layerGroup().addTo(mapa);
     }
 
-    function renderizarHeatmapSazonalidade() {
-        const anos = ['2020', '2021', '2022', '2023', '2024'];
-        const seriesData = anos.map(ano => {
-            return {
-                name: ano,
-                data: [
-                    {x: 'Jan', y: Math.floor(Math.random() * 200) + 50},
-                    {x: 'Fev', y: Math.floor(Math.random() * 150) + 40},
-                    {x: 'Mar', y: Math.floor(Math.random() * 100) + 30},
-                    {x: 'Abr', y: Math.floor(Math.random() * 200) + 50},
-                    {x: 'Mai', y: Math.floor(Math.random() * 400) + 100},
-                    {x: 'Jun', y: Math.floor(Math.random() * 800) + 300},
-                    {x: 'Jul', y: Math.floor(Math.random() * 1500) + 600},
-                    {x: 'Ago', y: Math.floor(Math.random() * 2500) + 1200},
-                    {x: 'Set', y: Math.floor(Math.random() * 3000) + 1500},
-                    {x: 'Out', y: Math.floor(Math.random() * 1800) + 800},
-                    {x: 'Nov', y: Math.floor(Math.random() * 600) + 200},
-                    {x: 'Dez', y: Math.floor(Math.random() * 300) + 100}
-                ]
-            }
-        }).reverse();
+    // ---------------------------------------------------------------- KPIs (/api/kpis)
+    // Para focos de fogo, subir é ruim (vermelho) e cair é bom (verde). null = sem base de comparação.
+    function aplicarVariacao(el, pct) {
+        el.classList.remove('kpi-trend-up', 'kpi-trend-down', 'kpi-trend-neutral');
+        if (pct === null || pct === undefined) { el.classList.add('kpi-trend-neutral'); el.textContent = 'sem base'; return; }
+        const texto = (pct > 0 ? '+' : '') + pct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+        const icone = pct > 0 ? 'arrow-up-right-circle-fill' : (pct < 0 ? 'arrow-down-right-circle-fill' : 'dash-circle-fill');
+        el.classList.add(pct > 0 ? 'kpi-trend-up' : (pct < 0 ? 'kpi-trend-down' : 'kpi-trend-neutral'));
+        el.innerHTML = `<i class="bi bi-${icone} me-1"></i>${esc(texto)}`;
+    }
 
-        var options = {
-            series: seriesData,
-            chart: { height: 260, type: 'heatmap', toolbar: { show: false }, background: 'transparent', fontFamily: 'Plus Jakarta Sans, sans-serif' },
-            plotOptions: { heatmap: { shadeIntensity: 0.6, radius: 4, useFillColorAsStroke: false, colorScale: { ranges: [
-                { from: 0, to: 300, name: 'Baixo', color: '#10b981' },
-                { from: 301, to: 1000, name: 'Moderado', color: '#ffbe0b' },
-                { from: 1001, to: 4000, name: 'Crítico', color: '#ef233c' }
-            ]}} },
+    function renderizarKpis(r) {
+        const nome = document.getElementById('kpiMunicipio');
+        const trend = document.getElementById('kpiMunicipioTrend');
+        const comp = document.getElementById('kpiComparacao');
+        const risco = document.getElementById('kpiRisco');
+        const riscoSub = document.getElementById('kpiRiscoSub');
+        risco.classList.remove('text-danger', 'text-success', 'text-secondary');
+
+        if (!r.ok) {
+            const msg = mensagemErro(r, 'KPIs indisponíveis');
+            nome.textContent = '—'; nome.title = msg;
+            trend.className = 'kpi-trend-neutral'; trend.textContent = 'indisponível';
+            comp.textContent = msg; risco.textContent = '—'; risco.classList.add('text-secondary'); riscoSub.textContent = '';
+            return;
+        }
+        const k = r.dados, p = k.periodo_referencia, m = k.municipio_mais_critico;
+        const rotulo = p.rotulo + (p.parcial ? ' (parcial)' : '');
+        if (m) {
+            nome.textContent = m.municipio;
+            nome.title = `${m.municipio}: ${m.focos.toLocaleString('pt-BR')} focos em ${p.rotulo} (${m.focos_mes_anterior.toLocaleString('pt-BR')} no período comparado)`;
+            aplicarVariacao(trend, m.variacao_pct);
+        } else {
+            nome.textContent = '—'; nome.title = ''; aplicarVariacao(trend, null);
+        }
+        // Mês parcial: a API compara com os MESMOS dias do mês anterior, então o rótulo precisa dizer isso.
+        comp.textContent = `${rotulo} · ` + (p.parcial ? `vs. mesmos ${k.periodo_comparacao.dias_comparados} dias do mês anterior` : 'vs. mês anterior');
+
+        const v = k.risco_medio.variacao_pct;
+        if (v === null || v === undefined) { risco.textContent = '—'; risco.classList.add('text-secondary'); }
+        else {
+            risco.textContent = (v > 0 ? '+' : '') + v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+            risco.classList.add(v > 0 ? 'text-danger' : (v < 0 ? 'text-success' : 'text-secondary'));
+        }
+        riscoSub.textContent = `risco médio · ${p.rotulo}`;
+    }
+
+    // ---------------------------------------------------------------- Heatmap (/api/sazonalidade)
+    function renderizarHeatmapSazonalidade(r) {
+        const alvo = document.getElementById('heatmapSazonalidade');
+        const nota = document.getElementById('notaSazonalidade');
+        if (chartHeatmap) { chartHeatmap.destroy(); chartHeatmap = null; }
+        alvo.innerHTML = ''; nota.textContent = '';
+
+        if (!r.ok) {
+            const aviso = document.createElement('div'); aviso.className = 'text-secondary small py-4 text-center';
+            aviso.textContent = mensagemErro(r, 'Não foi possível carregar a sazonalidade'); alvo.appendChild(aviso);
+            return;
+        }
+        const d = r.dados;
+        // Faixas vêm calculadas da própria base (tercis); descarta faixa degenerada (from > to) em bases minúsculas.
+        const ranges = d.faixas.filter(f => f.from <= f.to)
+            .map(f => ({ from: f.from, to: f.to, name: f.name, color: CORES_FAIXA[f.name] || '#64748b' }));
+        const series = [...d.series].reverse(); // mesma ordem visual de antes: anos mais antigos no topo
+
+        const options = {
+            series,
+            chart: { height: Math.max(260, 60 + series.length * 44), type: 'heatmap', toolbar: { show: false }, background: 'transparent', fontFamily: 'Plus Jakarta Sans, sans-serif' },
+            plotOptions: { heatmap: { shadeIntensity: 0.6, radius: 4, useFillColorAsStroke: false, colorScale: { ranges } } },
             dataLabels: { enabled: false },
             stroke: { width: 1, colors: ['#12161f'] },
             theme: { mode: 'dark' },
             xaxis: { labels: { style: { colors: '#94a3b8' } } },
             yaxis: { labels: { style: { colors: '#94a3b8' } } }
         };
+        chartHeatmap = new ApexCharts(alvo, options); chartHeatmap.render();
 
-        var chart = new ApexCharts(document.querySelector("#heatmapSazonalidade"), options);
-        chart.render();
+        if (d.mes_parcial) nota.textContent = `${d.meses[d.mes_parcial.mes - 1]}/${d.mes_parcial.ano} é um mês parcial: a base termina antes do fim do mês.`;
     }
 
-    async function carregarDashboard(primeiraVez = false) {
-        let catBar = document.getElementById('selectColBarra') ? document.getElementById('selectColBarra').value : '';
-        let catPie = document.getElementById('selectColPizza') ? document.getElementById('selectColPizza').value : 'bioma';
-        
-        if (primeiraVez) { catBar = 'municipio'; } // Força a busca inicial por município
+    async function carregarIndicadores() {
+        const [kpis, sazonalidade] = await Promise.all([chamarApi('/api/kpis'), chamarApi('/api/sazonalidade')]);
+        renderizarKpis(kpis);
+        renderizarHeatmapSazonalidade(sazonalidade);
+    }
 
-        const res = await fetch(`/api/dados?cat_bar=${catBar}&cat_pie=${catPie}`);
-        const dados = await res.json();
-        
-        // Se a base (ex: de testes) não tiver município, refaz o fetch usando estado como fallback invisível
+    // ---------------------------------------------------------------- Dashboard (/api/dados)
+    async function carregarDashboard(primeiraVez = false) {
+        const selBar = document.getElementById('selectColBarra'), selPie = document.getElementById('selectColPizza');
+        let catBar = selBar.value, catPie = selPie.value;
+        // Na 1ª carga os selects ainda estão vazios; mandar '' fazia o back devolver gráfico de pizza vazio.
+        if (primeiraVez) { catBar = 'municipio'; catPie = 'bioma'; }
+
+        const r = await chamarApi(`/api/dados?cat_bar=${encodeURIComponent(catBar)}&cat_pie=${encodeURIComponent(catPie)}`);
+        if (!r.ok || !r.dados || !r.dados.grafico_barras) {
+            mostrarAvisoGlobal(mensagemErro(r, 'Não foi possível carregar os dados'));
+            document.getElementById('metricaRegistros').textContent = '—';
+            return false;
+        }
+        mostrarAvisoGlobal('');
+        const dados = r.dados;
+
+        // Se a base (ex: de testes) não tiver município, refaz o fetch usando estado como fallback
         if (primeiraVez && Object.keys(dados.grafico_barras.valores || {}).length === 0) {
-            const resFallback = await fetch(`/api/dados?cat_bar=estado&cat_pie=${catPie}`);
-            const dadosFallback = await resFallback.json();
-            Object.assign(dados, dadosFallback);
+            const fb = await chamarApi(`/api/dados?cat_bar=estado&cat_pie=${encodeURIComponent(catPie)}`);
+            if (fb.ok && fb.dados) Object.assign(dados, fb.dados);
         }
 
         estadoDados = dados;
-        document.getElementById('metricaRegistros').innerText = dados.total_registros.toLocaleString('pt-BR');
-
-        if (primeiraVez) {
-            preencherSelectsIniciais(dados);
-            renderizarHeatmapSazonalidade(); 
-        }
+        document.getElementById('metricaRegistros').textContent = dados.total_registros.toLocaleString('pt-BR');
+        if (primeiraVez) preencherSelectsIniciais(dados);
 
         desenharGraficos(dados.grafico_barras, dados.grafico_pizza);
         atualizarMapa(dados.pontos_mapa);
+        return true;
     }
 
     function preencherSelectsIniciais(dados) {
         const selBar = document.getElementById('selectColBarra'); selBar.innerHTML = '';
         const selPie = document.getElementById('selectColPizza'); selPie.innerHTML = '';
-        
-        let hasMunicipio = dados.colunas_cat.includes('municipio') || dados.colunas_cat.includes('município');
 
-        dados.colunas_cat.forEach((col, i) => { 
+        const hasMunicipio = dados.colunas_cat.includes('municipio') || dados.colunas_cat.includes('município');
+
+        dados.colunas_cat.forEach((col, i) => {
             let isSelectedBar = '';
             if (hasMunicipio && (col.toLowerCase() === 'municipio' || col.toLowerCase() === 'município')) isSelectedBar = 'selected';
             else if (!hasMunicipio && col.toLowerCase() === 'estado') isSelectedBar = 'selected';
             else if (!hasMunicipio && !dados.colunas_cat.includes('estado') && i === 0) isSelectedBar = 'selected';
-            
-            selBar.innerHTML += `<option value="${col}" ${isSelectedBar}>${col}</option>`; 
-            
-            let isSelectedPie = (col.toLowerCase() === 'bioma') ? 'selected' : '';
-            selPie.innerHTML += `<option value="${col}" ${isSelectedPie}>${col}</option>`; 
+
+            selBar.innerHTML += `<option value="${esc(col)}" ${isSelectedBar}>${esc(col)}</option>`;
+            const isSelectedPie = (col.toLowerCase() === 'bioma') ? 'selected' : '';
+            selPie.innerHTML += `<option value="${esc(col)}" ${isSelectedPie}>${esc(col)}</option>`;
         });
 
-        const selAlvo = document.getElementById('selectAlvo');
-        const divFeat = document.getElementById('containerFeatures');
-        selAlvo.innerHTML = ''; divFeat.innerHTML = '';
+        // O back-end só prevê o risco de fogo (POST /api/treinar devolve 400 para outro alvo), então o alvo é fixo.
+        const selAlvo = document.getElementById('selectAlvo'); selAlvo.innerHTML = '';
+        const alvo = dados.colunas.includes('risco_fogo') ? 'risco_fogo' : (dados.colunas.includes('riscofogo') ? 'riscofogo' : null);
+        selAlvo.innerHTML = alvo ? `<option value="${esc(alvo)}" selected>${esc(alvo)}</option>` : '<option value="">(sem coluna de risco)</option>';
+        selAlvo.disabled = true;
 
-        dados.colunas.forEach(col => {
-            const isAlvoPadrao = (col === 'risco_fogo');
-            selAlvo.innerHTML += `<option value="${col}" ${isAlvoPadrao?'selected':''}>${col}</option>`;
-            
-            const checked = (!isAlvoPadrao && col !== 'latitude' && col !== 'longitude') ? 'checked' : '';
+        // Features: só as que o modelo realmente aceita (o back descartaria focos_mes, ano, dia etc. na hora de prever).
+        const divFeat = document.getElementById('containerFeatures'); divFeat.innerHTML = '';
+        dados.colunas.filter(col => !COLUNAS_FORA_DO_MODELO.includes(col)).forEach(col => {
+            const checked = FEATURES_DESMARCADAS.includes(col) ? '' : 'checked';
             divFeat.innerHTML += `
                 <div>
-                    <input class="feature-pill-input check-feature" type="checkbox" value="${col}" id="feat_${col}" ${checked} onchange="montarFormularioPredicao()">
-                    <label class="feature-pill-label" for="feat_${col}">${col}</label>
+                    <input class="feature-pill-input check-feature" type="checkbox" value="${esc(col)}" id="feat_${esc(col)}" ${checked} onchange="montarFormularioPredicao()">
+                    <label class="feature-pill-label" for="feat_${esc(col)}">${esc(col)}</label>
                 </div>`;
         });
         montarFormularioPredicao();
@@ -422,7 +518,7 @@
                 datasets: [{ label: 'Qtd de Focos', data: dadosOrdenados.map(d => d.val), backgroundColor: '#ff5e1a', borderRadius: 4 }]
             },
             options: {
-                indexAxis: 'y', 
+                indexAxis: 'y',
                 responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
                 scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' } }, y: { grid: { display: false } } }
             }
@@ -443,68 +539,141 @@
     function atualizarMapa(pontos) {
         camadaMarcadores.clearLayers();
         pontos.forEach(p => {
-            let cor = "#ff9f1c"; if (p.info.includes("Alto")) cor = "#ff2a55"; else if (p.info.includes("Baixo")) cor = "#2ec4b6";
-            L.circleMarker([p.lat, p.lon], { radius: 5, fillColor: cor, color: "#fff", weight: 1, fillOpacity: 0.8 }).bindPopup(`<div class="small fw-bold">${p.info}</div>`).addTo(camadaMarcadores);
+            // Lê o rótulo do campo "Risco: X" (e não qualquer "Alto" no texto, que poderia vir de um nome de município).
+            const m = p.info.match(/Risco: (Alto|Médio|Baixo)/);
+            const cor = m ? ({ 'Alto': '#ff2a55', 'Médio': '#ff9f1c', 'Baixo': '#2ec4b6' }[m[1]]) : '#ff9f1c';
+            L.circleMarker([p.lat, p.lon], { radius: 5, fillColor: cor, color: "#fff", weight: 1, fillOpacity: 0.8 }).bindPopup(`<div class="small fw-bold">${esc(p.info)}</div>`).addTo(camadaMarcadores);
         });
     }
 
+    // ---------------------------------------------------------------- Previsão de risco (ML)
     function montarFormularioPredicao() {
         const container = document.getElementById('formInputsPredicao'); container.innerHTML = '';
         const features = Array.from(document.querySelectorAll('.check-feature:checked')).map(el => el.value);
 
         features.forEach(col => {
             if (estadoDados.opcoes_categorias && estadoDados.opcoes_categorias[col]) {
-                const opts = estadoDados.opcoes_categorias[col].map(o => `<option value="${o}">${o}</option>`).join('');
-                container.innerHTML += `<div class="col-sm-6"><label class="form-label small text-secondary mb-1">${col}:</label><select class="form-select form-select-sm bg-dark border-secondary text-light input-predicao" data-col="${col}">${opts}</select></div>`;
+                const opts = estadoDados.opcoes_categorias[col].map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
+                container.innerHTML += `<div class="col-sm-6"><label class="form-label small text-secondary mb-1">${esc(col)}:</label><select class="form-select form-select-sm bg-dark border-secondary text-light input-predicao" data-col="${esc(col)}">${opts}</select></div>`;
             } else {
-                const valPad = estadoDados.medias_numericas[col] || 10;
-                container.innerHTML += `<div class="col-sm-6"><label class="form-label small text-secondary mb-1">${col}:</label><input type="number" step="0.1" class="form-control form-control-sm bg-dark border-secondary text-light input-predicao" data-col="${col}" value="${valPad}"></div>`;
+                const valPad = (estadoDados.medias_numericas && estadoDados.medias_numericas[col]) || 10;
+                container.innerHTML += `<div class="col-sm-6"><label class="form-label small text-secondary mb-1">${esc(col)}:</label><input type="number" step="0.1" class="form-control form-control-sm bg-dark border-secondary text-light input-predicao" data-col="${esc(col)}" value="${esc(valPad)}"></div>`;
             }
         });
     }
 
+    function atualizarRotuloParametro() {
+        const knn = document.getElementById('selectModelo').value === 'knn';
+        document.getElementById('rotuloParametro').textContent = knn ? 'Parâmetro do Modelo (k vizinhos):' : 'Parâmetro do Modelo (profundidade máxima):';
+        document.getElementById('ajudaParametro').textContent = knn
+            ? 'Número de vizinhos (k). Valores pequenos ajustam demais aos dados (overfitting); valores grandes suavizam a decisão.'
+            : 'Profundidade máxima da árvore (max_depth). Valores maiores ajustam mais aos dados; menores reduzem o overfitting.';
+    }
+
+    function mostrarResultadoTreino(d) {
+        document.getElementById('erroTreino').textContent = '';
+        document.getElementById('resultadoTreino').classList.remove('d-none');
+        document.getElementById('txtAcuracia').textContent = `${d.acuracia}%`;
+        document.getElementById('txtBaseline').textContent = (d.baseline_acuracia !== undefined)
+            ? `Baseline (sempre prever a classe mais comum): ${d.baseline_acuracia}%` : '';
+        const av = document.getElementById('avisosTreino'); av.innerHTML = '';
+        (d.avisos || []).forEach(a => { const linha = document.createElement('div'); linha.textContent = '⚠ ' + a; av.appendChild(linha); });
+    }
+
     async function treinarModelo() {
+        const btn = document.getElementById('btnTreinar');
+        const rotuloOriginal = btn.innerHTML;
         const alvo = document.getElementById('selectAlvo').value;
         const features = Array.from(document.querySelectorAll('.check-feature:checked')).map(el => el.value);
         const modelo = document.getElementById('selectModelo').value;
         const parametro = parseInt(document.getElementById('inputParametro').value, 10) || 8;
 
-        const res = await fetch('/api/treinar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alvo, features, modelo, parametro }) });
-        const dados = await res.json();
+        btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Treinando...';
+        document.getElementById('erroTreino').textContent = '';
+        try {
+            const r = await chamarApi('/api/treinar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alvo, features, modelo, parametro }) });
+            if (r.ok) mostrarResultadoTreino(r.dados);
+            else {
+                document.getElementById('resultadoTreino').classList.add('d-none');
+                document.getElementById('erroTreino').textContent = mensagemErro(r, 'Falha ao treinar o modelo');
+            }
+        } finally { btn.disabled = false; btn.innerHTML = rotuloOriginal; }
+    }
 
-        if (res.ok) {
-            document.getElementById('resultadoTreino').classList.remove('d-none');
-            document.getElementById('txtAcuracia').innerText = `${dados.acuracia}%`;
+    // Na abertura da página usa o modelo já salvo (GET /api/modelo) em vez de re-treinar toda vez;
+    // só treina se ainda não existir modelo (404).
+    async function carregarModeloSalvo() {
+        const r = await chamarApi('/api/modelo');
+        if (r.ok && r.dados && r.dados.acuracia !== undefined) {
+            const cfg = r.dados.config || {};
+            if (cfg.modelo) { document.getElementById('selectModelo').value = cfg.modelo; atualizarRotuloParametro(); }
+            if (cfg.parametro) document.getElementById('inputParametro').value = cfg.parametro;
+            if (Array.isArray(cfg.features)) {
+                document.querySelectorAll('.check-feature').forEach(el => { el.checked = cfg.features.includes(el.value); });
+                montarFormularioPredicao();
+            }
+            mostrarResultadoTreino(r.dados);
+        } else if (r.status === 404) {
+            await treinarModelo();
+        } else {
+            document.getElementById('erroTreino').textContent = mensagemErro(r, 'Não foi possível carregar o modelo');
         }
     }
 
     async function realizarPredicao() {
-        const inputs = document.querySelectorAll('.input-predicao');
-        const entradas = {}; inputs.forEach(inp => { entradas[inp.getAttribute('data-col')] = inp.value; });
+        const entradas = {};
+        document.querySelectorAll('.input-predicao').forEach(inp => { entradas[inp.getAttribute('data-col')] = inp.value; });
+        const caixa = document.getElementById('resultadoPredicao'), erro = document.getElementById('erroPredicao');
+        erro.textContent = '';
 
-        const res = await fetch('/api/prever', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entradas }) });
-        const dados = await res.json();
+        const r = await chamarApi('/api/prever', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entradas }) });
+        if (!r.ok) { caixa.classList.add('d-none'); erro.textContent = mensagemErro(r, 'Falha na predição'); return; }
 
-        if (res.ok) {
-            document.getElementById('resultadoPredicao').classList.remove('d-none');
-            document.getElementById('txtPredicaoFinal').innerText = dados.predicao;
-            
-            const contProbs = document.getElementById('containerProbabilidades'); contProbs.innerHTML = '';
-            Object.entries(dados.probabilidades).forEach(([classe, pct]) => {
-                contProbs.innerHTML += `<div class="d-flex justify-content-between mb-1"><span>${classe}</span><span class="text-info">${pct}%</span></div><div class="progress mb-2" style="height:4px;background:#333;"><div class="progress-bar bg-info" style="width:${pct}%"></div></div>`;
-            });
-        }
+        const dados = r.dados;
+        caixa.classList.remove('d-none');
+        document.getElementById('txtPredicaoFinal').textContent = dados.predicao;
+
+        const contProbs = document.getElementById('containerProbabilidades'); contProbs.innerHTML = '';
+        Object.entries(dados.probabilidades).forEach(([classe, pct]) => {
+            contProbs.innerHTML += `<div class="d-flex justify-content-between mb-1"><span>${esc(classe)}</span><span class="text-info">${esc(pct)}%</span></div><div class="progress mb-2" style="height:4px;background:#333;"><div class="progress-bar bg-info" style="width:${Number(pct) || 0}%"></div></div>`;
+        });
+
+        // O back devolve o que não conseguiu usar; mostra para não parecer que todos os campos foram considerados.
+        const avisos = [];
+        if ((dados.categorias_desconhecidas || []).length) avisos.push(`Categoria não vista no treino: ${dados.categorias_desconhecidas.join(', ')}.`);
+        if ((dados.campos_ausentes || []).length) avisos.push(`Campos não informados (preenchidos pelo modelo): ${dados.campos_ausentes.join(', ')}.`);
+        document.getElementById('avisoPredicao').textContent = avisos.join(' ');
     }
 
+    // ---------------------------------------------------------------- Upload (/api/upload)
     document.getElementById('formUpload').addEventListener('submit', async (e) => {
-        e.preventDefault(); const formData = new FormData(); formData.append('arquivo', document.getElementById('inputArquivo').files[0]);
-        document.getElementById('statusUpload').innerHTML = '<span class="text-info">Processando base do INPE...</span>';
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (res.ok) { document.getElementById('statusUpload').innerHTML = `<span class="text-success">Base INPE carregada!</span>`; await carregarDashboard(true); await treinarModelo(); }
+        e.preventDefault();
+        const arquivo = document.getElementById('inputArquivo').files[0];
+        if (!arquivo) return;
+        const btn = e.target.querySelector('button[type="submit"]');
+        const formData = new FormData(); formData.append('arquivo', arquivo);
+
+        btn.disabled = true;
+        setStatus('statusUpload', 'Processando base do INPE...', 'text-info');
+        try {
+            const r = await chamarApi('/api/upload', { method: 'POST', body: formData });
+            if (!r.ok) { setStatus('statusUpload', mensagemErro(r, 'Falha no upload'), 'text-danger'); return; }
+
+            setStatus('statusUpload', (r.dados && r.dados.mensagem) || 'Base INPE carregada!', 'text-success');
+            await carregarDashboard(true);
+            await carregarIndicadores();
+            if (!r.dados || r.dados.retreinar !== false) await treinarModelo(); // a base mudou: o modelo salvo ficou defasado
+        } finally { btn.disabled = false; }
     });
 
     document.getElementById('btnAbaMapa').addEventListener('shown.bs.tab', () => { mapa.invalidateSize(); });
-    window.onload = async () => { iniciarMapa(); await carregarDashboard(true); await treinarModelo(); };
+    window.onload = async () => {
+        iniciarMapa();
+        atualizarRotuloParametro();
+        const ok = await carregarDashboard(true);
+        if (!ok) return;
+        await Promise.all([carregarIndicadores(), carregarModeloSalvo()]);
+    };
 </script>
 </body>
 </html>
