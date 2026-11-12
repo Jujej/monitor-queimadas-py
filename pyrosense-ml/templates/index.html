@@ -90,7 +90,7 @@
         .nav-pills-custom .nav-link { color: var(--text-muted); font-weight: 600; font-size: 0.9rem; border-radius: 10px; }
         .nav-pills-custom .nav-link.active { background: linear-gradient(135deg, var(--accent-fire), #d9381e); color: #fff; box-shadow: 0 4px 14px rgba(255, 94, 26, 0.35); }
 
-        #mapa { height: 480px; width: 100%; border-radius: 12px; border: 1px solid var(--border-subtle); background: #11141c; }
+        #mapa { height: calc(100vh - 190px); min-height: 680px; width: 100%; border-radius: 12px; border: 1px solid var(--border-subtle); background: #11141c; }
         .leaflet-layer, .leaflet-control-zoom-in, .leaflet-control-zoom-out, .leaflet-control-attribution {
             filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
         }
@@ -143,6 +143,14 @@
                 <div id="statusUpload" class="mt-2 small text-center"></div>
             </div>
 
+            <div class="glass-card p-3 mb-3">
+                <label for="selectMesReferencia" class="form-label small fw-semibold text-light mb-1"><i class="bi bi-calendar3 text-warning me-2"></i>Mês de referência</label>
+                <select id="selectMesReferencia" class="form-select form-select-sm bg-dark border-secondary text-light" onchange="carregarKpis(this.value)" disabled>
+                    <option>carregando...</option>
+                </select>
+                <small class="text-secondary d-block mt-1" style="font-size: 0.7rem;">Os indicadores abaixo comparam o mês escolhido com o mês anterior.</small>
+            </div>
+
             <div class="kpi-card mb-3 border-danger border-opacity-50">
                 <div class="text-secondary small fw-medium mb-1"><i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> Município Mais Crítico</div>
                 <div id="kpiMunicipio" class="kpi-value text-white text-truncate" title="">—</div>
@@ -182,11 +190,16 @@
                 <div class="tab-pane fade show active" id="aba-graficos">
                     
                     <div class="glass-card p-4 mb-4">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
                             <div>
                                 <h6 class="fw-bold m-0 text-white"><i class="bi bi-grid-3x3-gap-fill text-warning me-2"></i>Heatmap de Sazonalidade (Mês × Ano)</h6>
-                                <small class="text-secondary">Correlação do volume de focos de queimadas detectados pelo INPE</small>
+                                <small id="subtituloHeatmap" class="text-secondary">Volume de focos de queimadas detectados pelo INPE</small>
                             </div>
+                            <select id="selectMetricaHeatmap" class="form-select form-select-sm bg-dark border-secondary text-light w-auto" onchange="carregarSazonalidade()" title="Métrica exibida no heatmap">
+                                <option value="focos" selected>Risco (focos detectados)</option>
+                                <option value="precipitacao">Precipitação (média)</option>
+                                <option value="diasemchuva">Dias sem chuva (média)</option>
+                            </select>
                         </div>
                         <div id="heatmapSazonalidade" style="min-height: 250px;"></div>
                         <div id="notaSazonalidade" class="small text-secondary mt-2"></div>
@@ -308,6 +321,13 @@
     // Começam desmarcadas: 'estado' é constante após o ETL (só Tocantins); lat/lon e município são opcionais.
     const FEATURES_DESMARCADAS = ['latitude', 'longitude', 'municipio', 'estado'];
     const CORES_FAIXA = { 'Baixo': '#10b981', 'Moderado': '#ffbe0b', 'Crítico': '#ef233c' };
+    // Cores/rótulos por métrica do heatmap. Precipitação: cinza-azulado (pouca chuva) -> azul claro -> azul forte.
+    const TEMAS_HEATMAP = {
+        precipitacao: {
+            cores: { 'Baixo': '#8a9bb0', 'Moderado': '#38bdf8', 'Crítico': '#2563eb' },
+            nomes: { 'Baixo': 'Pouca chuva', 'Moderado': 'Chuva moderada', 'Crítico': 'Muita chuva' }
+        }
+    };
 
     // ---------------------------------------------------------------- utilitários
     function esc(txt) {
@@ -359,6 +379,16 @@
         el.innerHTML = `<i class="bi bi-${icone} me-1"></i>${esc(texto)}`;
     }
 
+    // Lista os meses que existem na base (mais recente primeiro) e marca o que está em uso.
+    function preencherSeletorMes(k) {
+        const sel = document.getElementById('selectMesReferencia');
+        const atual = `${k.periodo_referencia.ano}-${String(k.periodo_referencia.mes).padStart(2, '0')}`;
+        sel.innerHTML = (k.periodos_disponiveis || [])
+            .map(o => `<option value="${esc(o.valor)}">${esc(o.rotulo)}</option>`).join('');
+        sel.value = atual;
+        sel.disabled = !sel.options.length;
+    }
+
     function renderizarKpis(r) {
         const nome = document.getElementById('kpiMunicipio');
         const trend = document.getElementById('kpiMunicipioTrend');
@@ -375,6 +405,7 @@
             return;
         }
         const k = r.dados, p = k.periodo_referencia, m = k.municipio_mais_critico;
+        preencherSeletorMes(k);
         const rotulo = p.rotulo + (p.parcial ? ' (parcial)' : '');
         if (m) {
             nome.textContent = m.municipio;
@@ -408,13 +439,20 @@
             return;
         }
         const d = r.dados;
+        document.getElementById('subtituloHeatmap').textContent = d.descricao || '';
         // Faixas vêm calculadas da própria base (tercis); descarta faixa degenerada (from > to) em bases minúsculas.
-        // Células zeradas ficam em cinza apagado: a faixa "Sem focos" cobre só o 0 e as demais começam acima dele.
+        // Células zeradas ficam em cinza apagado: a faixa "Zero / sem dado" cobre só o 0 e as demais começam
+        // um passo acima dele (d.passo: 1 foco, 0,1 dia ou 0,01 mm, conforme a métrica).
         const COR_ZERO = '#3a404d';
+        const passo = d.passo || 1;
+        // Precipitação usa tons de cinza e azul (remetem à chuva); as demais métricas mantêm verde/amarelo/vermelho.
+        const tema = TEMAS_HEATMAP[d.metrica] || { cores: CORES_FAIXA, nomes: {} };
         const ranges = d.faixas
-            .map(f => ({ from: f.from <= 0 ? 0.5 : f.from, to: f.to, name: f.name, color: CORES_FAIXA[f.name] || '#64748b' }))
+            .map(f => ({ from: f.from <= 0 ? passo : f.from, to: f.to, name: tema.nomes[f.name] || f.name, color: tema.cores[f.name] || '#64748b' }))
             .filter(f => f.from <= f.to);
-        ranges.unshift({ from: 0, to: 0, name: 'Sem focos', color: COR_ZERO });
+        ranges.unshift({ from: 0, to: 0, name: 'Zero / sem dado', color: COR_ZERO });
+        const unidade = d.unidade || '';
+        const fmt = v => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d.casas || 0, maximumFractionDigits: d.casas || 0 });
         // Valores nulos/ausentes também contam como zero, para não caírem na cor padrão do gráfico.
         const series = [...d.series].reverse().map(s => ({
             ...s,
@@ -428,6 +466,7 @@
             chart: { height: Math.max(260, 60 + series.length * 44), type: 'heatmap', toolbar: { show: false }, background: 'transparent', fontFamily: 'Plus Jakarta Sans, sans-serif' },
             plotOptions: { heatmap: { shadeIntensity: 0.6, radius: 4, useFillColorAsStroke: false, colorScale: { ranges } } },
             dataLabels: { enabled: false },
+            tooltip: { y: { formatter: v => `${fmt(v)} ${unidade}` } },
             stroke: { width: 1, colors: ['#12161f'] },
             theme: { mode: 'dark' },
             xaxis: { labels: { style: { colors: '#94a3b8' } } },
@@ -438,10 +477,18 @@
         if (d.mes_parcial) nota.textContent = `${d.meses[d.mes_parcial.mes - 1]}/${d.mes_parcial.ano} é um mês parcial: a base termina antes do fim do mês.`;
     }
 
+    // `mes` = 'AAAA-MM'; sem ele a API usa o mês mais recente da base.
+    async function carregarKpis(mes = null) {
+        renderizarKpis(await chamarApi(mes ? `/api/kpis?mes=${encodeURIComponent(mes)}` : '/api/kpis'));
+    }
+
+    async function carregarSazonalidade() {
+        const metrica = document.getElementById('selectMetricaHeatmap').value;
+        renderizarHeatmapSazonalidade(await chamarApi(`/api/sazonalidade?metrica=${encodeURIComponent(metrica)}`));
+    }
+
     async function carregarIndicadores() {
-        const [kpis, sazonalidade] = await Promise.all([chamarApi('/api/kpis'), chamarApi('/api/sazonalidade')]);
-        renderizarKpis(kpis);
-        renderizarHeatmapSazonalidade(sazonalidade);
+        await Promise.all([carregarKpis(), carregarSazonalidade()]);
     }
 
     // ---------------------------------------------------------------- Dashboard (/api/dados)
