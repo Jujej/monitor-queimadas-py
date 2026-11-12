@@ -409,9 +409,19 @@
         }
         const d = r.dados;
         // Faixas vêm calculadas da própria base (tercis); descarta faixa degenerada (from > to) em bases minúsculas.
-        const ranges = d.faixas.filter(f => f.from <= f.to)
-            .map(f => ({ from: f.from, to: f.to, name: f.name, color: CORES_FAIXA[f.name] || '#64748b' }));
-        const series = [...d.series].reverse(); // mesma ordem visual de antes: anos mais antigos no topo
+        // Células zeradas ficam em cinza apagado: a faixa "Sem focos" cobre só o 0 e as demais começam acima dele.
+        const COR_ZERO = '#3a404d';
+        const ranges = d.faixas
+            .map(f => ({ from: f.from <= 0 ? 0.5 : f.from, to: f.to, name: f.name, color: CORES_FAIXA[f.name] || '#64748b' }))
+            .filter(f => f.from <= f.to);
+        ranges.unshift({ from: 0, to: 0, name: 'Sem focos', color: COR_ZERO });
+        // Valores nulos/ausentes também contam como zero, para não caírem na cor padrão do gráfico.
+        const series = [...d.series].reverse().map(s => ({
+            ...s,
+            data: s.data.map(p => (p && typeof p === 'object')
+                ? { ...p, y: (p.y === null || p.y === undefined) ? 0 : p.y }
+                : ((p === null || p === undefined) ? 0 : p))
+        })); // mesma ordem visual de antes: anos mais antigos no topo
 
         const options = {
             series,

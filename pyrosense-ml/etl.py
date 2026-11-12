@@ -97,6 +97,8 @@ ALIASES_COLUNAS = {
     "numero_dias_sem_chuva": "diasemchuva",
     "dias_sem_chuva": "diasemchuva",
     "risco_fogo": "riscofogo",
+    "lat": "latitude",
+    "lon": "longitude",
 }
 
 # Colunas com mais nulos que isso (após filtrar o estado) são descartadas:
